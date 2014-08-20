@@ -906,7 +906,7 @@ class PyIOCeEditMenu(wx.Menu):
         self.Append(wx.ID_COPY, '&Copy')
         self.Append(wx.ID_PASTE, '&Paste')
         self.Append(wx.ID_REVERT, '&Revert')
-        self.Append(wx.ID_REPLACE, 'Con&vert')
+        self.Append(wx.ID_REPLACE, 'Conver&t')
         self.Append(wx.ID_DUPLICATE, 'C&lone')
 
 
@@ -1036,6 +1036,26 @@ class IOCTreeCtrl(wx.TreeCtrl):
             child, cookie = self.GetNextChild(node, cookie)
 
         if depth == 0:
+            return [item]
+        else:
+            return item
+
+    def mod_branch(self, branch, parent_element=None):
+        new_children = []
+        for item in branch:
+            item['data'].attrib['id'] = ioc_et.get_guid()
+            if parent_element != None:
+                parent_element.append(item['data'])
+            if len(item['children']) > 0:
+                for child_element in item['data'].findall('*'):
+                    print child_element.tag
+                    item['data'].remove(child_element)
+
+                for child in item['children']:
+                    new_children.append(self.mod_branch([child], item['data']))
+            item['children'] = new_children
+        
+        if parent_element == None:
             return [item]
         else:
             return item
@@ -1251,11 +1271,20 @@ class IOCTreeCtrl(wx.TreeCtrl):
 
             parent_element.remove(child_element)
 
-    def convert_terms(self, convert_context):
-        if self.current_indicator_id != None:                
-            self.SetFocus() #FIXME
+    def on_convert(self, convert_context):
+        if self.current_ioc != None:
+            if self.current_indicator_id != None:
+                convert_dialog = ConvertDialog(self)
+                convert_dialog.CenterOnScreen()
+            
+                if convert_dialog.ShowModal() == wx.ID_OK:
+                    convert_context = convert_dialog.convert_context
+                    #FIXME - Convert Terms
+            
+            convert_dialog.Destroy()
         
-
+        self.SetFocus()
+        
 
 class IOCListCtrl(wx.ListCtrl, ColumnSorterMixin):
     def __init__(self, parent):
@@ -1698,6 +1727,7 @@ class PyIOCe(wx.Frame):
         self.ioc_list = IOCList()
         self.current_ioc = None
         self.current_ioc_file = None
+        self.clip_branch = None
 
         self.preferences = {}
 
@@ -1786,7 +1816,7 @@ class PyIOCe(wx.Frame):
         self.Bind(wx.EVT_MENU, self.on_copy, id=wx.ID_COPY)
         self.Bind(wx.EVT_MENU, self.on_paste, id=wx.ID_PASTE)
         self.Bind(wx.EVT_MENU, self.on_revert, id=wx.ID_REVERT)
-        self.Bind(wx.EVT_MENU, self.on_convert, id=wx.ID_REPLACE)
+        self.Bind(wx.EVT_MENU, self.ioc_notebook.ioc_indicator_page.ioc_tree_ctrl.on_convert, id=wx.ID_REPLACE)
         self.Bind(wx.EVT_MENU, self.on_about, id=wx.ID_ABOUT)
         self.Bind(wx.EVT_MENU, self.on_help, id=wx.ID_HELP)
         self.Bind(wx.EVT_MENU, self.on_clone, id=wx.ID_DUPLICATE)
@@ -1800,10 +1830,10 @@ class PyIOCe(wx.Frame):
             (wx.ACCEL_CTRL, ord('s'), wx.ID_SAVE),
             (wx.ACCEL_CTRL, ord('a'), wx.ID_SAVEAS),
             (wx.ACCEL_CTRL, ord('c'), wx.ID_COPY),
-            (wx.ACCEL_CTRL, ord('p'), wx.ID_PASTE),
+            (wx.ACCEL_CTRL, ord('v'), wx.ID_PASTE),
             (wx.ACCEL_CTRL, ord('x'), wx.ID_CUT),
             (wx.ACCEL_CTRL, ord('r'), wx.ID_REVERT),
-            (wx.ACCEL_CTRL, ord('v'), wx.ID_REPLACE),
+            (wx.ACCEL_CTRL, ord('t'), wx.ID_REPLACE),
             (wx.ACCEL_CTRL, ord('l'), wx.ID_DUPLICATE)
             ])
 
@@ -1979,14 +2009,65 @@ class PyIOCe(wx.Frame):
     def on_ioc_activated(self,event):
         self.ioc_notebook.ioc_indicator_page.ioc_tree_ctrl.SetFocus()
 
+
     def on_cut(self,event):
-        pass
+        ioc_tree_ctrl = self.ioc_notebook.ioc_indicator_page.ioc_tree_ctrl
+        if self.FindFocus() == ioc_tree_ctrl:
+            current_indicator_id = ioc_tree_ctrl.current_indicator_id
+            if current_indicator_id != None and current_indicator_id != ioc_tree_ctrl.root_item_id:
+                current_indicator_element = ioc_tree_ctrl.GetItemData(current_indicator_id).GetData()
+                
+                parent_id = ioc_tree_ctrl.GetItemParent(current_indicator_id)
+                parent_element = current_indicator_element.getparent()
+
+                self.clip_branch = ioc_tree_ctrl.save_branch(current_indicator_id)
+
+                child_element = current_indicator_element
+                child_id = current_indicator_id
+                
+                current_indicator_id = parent_id
+                current_indicator_element = parent_element
+                
+                ioc_tree_ctrl.Delete(child_id)
+                parent_element.remove(child_element)
+
+                ioc_tree_ctrl.SelectItem(current_indicator_id)
+        else:
+            event.Skip()
 
     def on_copy(self,event):
-        pass
+        ioc_tree_ctrl = self.ioc_notebook.ioc_indicator_page.ioc_tree_ctrl
+        if self.FindFocus() == ioc_tree_ctrl:
+            current_indicator_id = ioc_tree_ctrl.current_indicator_id
+            if current_indicator_id != None:
+                copy_branch = copy.deepcopy(ioc_tree_ctrl.save_branch(current_indicator_id))
+                self.clip_branch = ioc_tree_ctrl.mod_branch(copy_branch)
+        else:
+            event.Skip()
 
     def on_paste(self,event):
-        pass
+        ioc_tree_ctrl = self.ioc_notebook.ioc_indicator_page.ioc_tree_ctrl
+        if self.FindFocus() == ioc_tree_ctrl:
+            after_item_id = None
+            dst_item_id = ioc_tree_ctrl.current_indicator_id
+
+            # If moving to IndicatorIndicator item find set positioning and set destination to parent
+            if ioc_tree_ctrl.GetItemData(dst_item_id).GetData().tag == "IndicatorItem":
+                after_item_id = dst_item_id
+                dst_item_id = ioc_tree_ctrl.GetItemParent(dst_item_id)
+
+            #Insert branch returning list of items that need to be expanded after move
+            ioc_tree_ctrl.current_indicator_id, expanded_item_list = ioc_tree_ctrl.insert_branch(self.clip_branch, dst_item_id, after_item_id)
+            
+            for expand_item_id in expanded_item_list:
+                ioc_tree_ctrl.Expand(expand_item_id)
+
+            ioc_tree_ctrl.SelectItem(ioc_tree_ctrl.current_indicator_id)
+
+            self.clip_branch = copy.deepcopy(self.clip_branch)
+            self.clip_branch = ioc_tree_ctrl.mod_branch(self.clip_branch)
+        else:
+            event.Skip()
 
     def on_revert(self, event):
         if self.current_ioc != None and self.current_ioc.orig_xml.tag != "New":
@@ -1994,17 +2075,6 @@ class PyIOCe(wx.Frame):
             self.ioc_list.iocs[self.current_ioc_file] = IOC(self.current_ioc.orig_xml)
             self.current_ioc = self.ioc_list.iocs[self.current_ioc_file]
             self.update()
-
-    def on_convert(self, event):
-        if self.current_ioc != None:
-            convert_dialog = ConvertDialog(self)
-            convert_dialog.CenterOnScreen()
-        
-            if convert_dialog.ShowModal() == wx.ID_OK:
-                convert_context = convert_dialog.convert_context
-                self.ioc_notebook.ioc_indicator_page.ioc_tree_ctrl.convert_terms(convert_context)
-            
-            convert_dialog.Destroy()
 
 if __name__ == '__main__':
     BASE_DIR = "./"
