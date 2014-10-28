@@ -1421,6 +1421,7 @@ class IOCTreeCtrl(wx.TreeCtrl):
         item = {}
         item['data'] = self.GetItemPyData(node)
         item['was-expanded'] = self.IsExpanded(node)
+        item['image'] = self.GetItemImage(node)
         item['children'] = []
         
         children = self.GetChildrenCount(node, False)
@@ -1474,6 +1475,8 @@ class IOCTreeCtrl(wx.TreeCtrl):
             self.SetItemTextColour(insert_item_id, color)
             self.SetItemPyData(insert_item_id, item['data'])
             
+            if item['image'] != -1: 
+                self.SetItemImage(insert_item_id, 0, item['image'])
 
             if item['was-expanded'] == True:
                 expanded_item_list.append(insert_item_id)
@@ -1534,6 +1537,7 @@ class IOCTreeCtrl(wx.TreeCtrl):
             event.Skip()
 
     def on_indicator_begin_drag(self, event):
+        self.current_indicator_id = event.GetItem()
         if self.current_indicator_id != self.root_item_id:
             event.Allow()
 
@@ -2566,7 +2570,7 @@ class PyIOCe(wx.Frame):
 
 if __name__ == '__main__':
     BASE_DIR = "./"
-    VERSION = "0.9.6"
+    VERSION = "0.9.7"
     app = wx.App()
 
     PyIOCe(None)
