@@ -11,7 +11,7 @@ scope a compromise across large enterprise networks.
 
 This project is meant to expand ongoing efforts to broaden the use of OpenIOC with other systems such as Snort, GRR, Splunk, and Yara
 
-Standalone binaries are available under /dist
+Standalone binaries are available under /dist on release branches
 
 Required Python Modules:
 wxPython
@@ -35,7 +35,3 @@ Roadmap:
 - IOC Validation/Testing
 - More well defined Indicator Terms and parameters for GRR, Snort, and other systems
 - Output relevant formats for use, Splunk searches from Splunk terms, Yara signature outputs from Yara terms, XPATH from MIR terms, etc
-
-
-Bug reports, questions, comments, requests:
-seagill at yahoo-inc dot com
